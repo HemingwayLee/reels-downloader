@@ -1,0 +1,7 @@
+fastapi[standard]==0.142.2
+uvicorn[standard]==0.54.0
+sqlalchemy==2.1.1
+psycopg[binary]==3.3.6
+pydantic-settings==2.15.0
+playwright==1.63.0
+yt-dlp==2026.8.19

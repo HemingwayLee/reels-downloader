@@ -1,0 +1,57 @@
+name: reels-downloader-dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    environment:
+      DATABASE_URL: postgresql+psycopg://app:app@db:5432/app
+      CORS_ORIGINS: '["http://localhost:5173"]'
+      # Polling makes --reload reliable for bind mounts inside Docker.
+      WATCHFILES_FORCE_POLLING: "true"
+      # Kept outside /app so new files don't trigger uvicorn --reload mid-job.
+      DOWNLOADS_DIR: /downloads
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./downloads:/downloads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+      VITE_USE_POLLING: "true"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      # Keep the container's node_modules instead of the host's.
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

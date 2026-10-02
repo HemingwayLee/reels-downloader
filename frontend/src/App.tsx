@@ -1,0 +1,220 @@
+import { useEffect, useState, type FormEvent } from 'react'
+import {
+  Alert,
+  AppBar,
+  Button,
+  Chip,
+  Container,
+  FormControlLabel,
+  LinearProgress,
+  Link,
+  List,
+  ListItem,
+  ListItemText,
+  Paper,
+  Stack,
+  Switch,
+  TextField,
+  Toolbar,
+  Typography,
+} from '@mui/material'
+import DownloadIcon from '@mui/icons-material/Download'
+import { api, type DownloadJob, type Health } from './api.ts'
+import FileBrowser from './FileBrowser.tsx'
+
+const POLL_INTERVAL_MS = 1500
+
+const STATUS_LABEL: Record<DownloadJob['status'], string> = {
+  pending: 'Starting…',
+  collecting: 'Finding latest reels…',
+  downloading: 'Downloading…',
+  done: 'Done',
+  failed: 'Failed',
+}
+
+function isRunning(job: DownloadJob | null) {
+  return job !== null && job.status !== 'done' && job.status !== 'failed'
+}
+
+export default function App() {
+  const [health, setHealth] = useState<Health | null>(null)
+  const [count, setCount] = useState('5')
+  const [pageUrl, setPageUrl] = useState('')
+  const [skipCustomCovers, setSkipCustomCovers] = useState(true)
+  const [job, setJob] = useState<DownloadJob | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.health().then(setHealth).catch((e: Error) => setError(e.message))
+    // Pick up the latest job so a page refresh doesn't lose a running download.
+    api
+      .listDownloads()
+      .then((jobs) => setJob((current) => current ?? jobs[0] ?? null))
+      .catch((e: Error) => setError(e.message))
+  }, [])
+
+  const running = isRunning(job)
+  const jobId = job?.id
+
+  useEffect(() => {
+    if (!running || jobId === undefined) return
+    const timer = setInterval(() => {
+      api.getDownload(jobId).then(setJob).catch((e: Error) => setError(e.message))
+    }, POLL_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [running, jobId])
+
+  const n = Number(count)
+  const countValid = Number.isInteger(n) && n >= 1 && n <= 200
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!countValid || !pageUrl.trim()) return
+    try {
+      setError(null)
+      setJob(await api.createDownload(pageUrl.trim(), n, skipCustomCovers))
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  const done = job ? job.files.length + job.failed.length : 0
+
+  return (
+    <>
+      <AppBar position="static">
+        <Toolbar>
+          <Typography variant="h6" sx={{ flexGrow: 1 }}>
+            Reels Downloader
+          </Typography>
+          {health && (
+            <Chip
+              size="small"
+              color={health.database === 'ok' ? 'success' : 'error'}
+              label={`API ${health.status} · DB ${health.database}`}
+            />
+          )}
+        </Toolbar>
+      </AppBar>
+
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Stack spacing={3}>
+          {error && <Alert severity="error">{error}</Alert>}
+
+          <Paper component="form" onSubmit={handleSubmit} sx={{ p: 2 }}>
+            <Stack spacing={1}>
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
+                <TextField
+                  label="Facebook reels page"
+                  placeholder="https://www.facebook.com/rayshinlife/reels/"
+                  size="small"
+                  fullWidth
+                  value={pageUrl}
+                  onChange={(e) => setPageUrl(e.target.value)}
+                />
+                <TextField
+                  label="Latest reels (N)"
+                  type="number"
+                  size="small"
+                  value={count}
+                  onChange={(e) => setCount(e.target.value)}
+                  error={!countValid}
+                  helperText={countValid ? undefined : 'Whole number from 1 to 200'}
+                  slotProps={{ htmlInput: { min: 1, max: 200 } }}
+                  sx={{ width: { xs: '100%', md: 200 }, flexShrink: 0 }}
+                />
+                <Button
+                  type="submit"
+                  variant="contained"
+                  startIcon={<DownloadIcon />}
+                  disabled={running || !countValid || !pageUrl.trim()}
+                  sx={{ width: { xs: '100%', md: 'auto' }, height: 40, flexShrink: 0 }}
+                >
+                  Run
+                </Button>
+              </Stack>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={skipCustomCovers}
+                    onChange={(e) => setSkipCustomCovers(e.target.checked)}
+                  />
+                }
+                label="Only reels without a custom cover"
+              />
+            </Stack>
+          </Paper>
+
+          {job && (
+            <Paper sx={{ p: 2 }}>
+              <Stack spacing={1.5}>
+                <Typography variant="subtitle1">
+                  {STATUS_LABEL[job.status]}
+                  {job.status === 'downloading' && ` ${done} / ${job.count}`}
+                </Typography>
+                {job.skipped.length > 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    Skipped {job.skipped.length} reel{job.skipped.length === 1 ? '' : 's'}
+                  </Typography>
+                )}
+                {running && (
+                  <LinearProgress
+                    variant={job.status === 'downloading' ? 'determinate' : 'indeterminate'}
+                    value={(done / job.count) * 100}
+                  />
+                )}
+                {job.error && <Alert severity="error">{job.error}</Alert>}
+                {job.status === 'done' && job.files.length < job.count && (
+                  <Alert severity="warning">
+                    Only {job.files.length} of {job.count} reels were downloaded.
+                  </Alert>
+                )}
+                {job.output_dir && (
+                  <Typography variant="body2" color="text.secondary">
+                    Saving to <code>downloads/{job.output_dir}/</code>
+                  </Typography>
+                )}
+              </Stack>
+              {(job.files.length > 0 || job.failed.length > 0 || job.skipped.length > 0) && (
+                <List dense>
+                  {job.files.map((f) => (
+                    <ListItem key={f} disableGutters>
+                      <ListItemText primary={f} />
+                    </ListItem>
+                  ))}
+                  {job.failed.map((url) => (
+                    <ListItem key={url} disableGutters>
+                      <ListItemText
+                        primary={url}
+                        secondary="Failed"
+                        slotProps={{ secondary: { color: 'error' } }}
+                      />
+                    </ListItem>
+                  ))}
+                  {job.skipped.map((s) => (
+                    <ListItem key={s.url} disableGutters>
+                      <ListItemText
+                        primary={
+                          <Link href={s.url} target="_blank" rel="noreferrer" color="inherit">
+                            {s.url}
+                          </Link>
+                        }
+                        secondary={`Skipped · ${s.reason}`}
+                        slotProps={{ secondary: { color: 'warning' } }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </Paper>
+          )}
+
+          <FileBrowser
+            folder={job?.output_dir ?? null}
+            refreshKey={`${job?.id}:${job?.files.length}:${job?.status}`}
+          />
+        </Stack>
+      </Container>
+    </>
+  )
+}
