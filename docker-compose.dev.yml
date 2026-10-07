@@ -29,10 +29,12 @@ services:
       # Kept outside /app so new files don't trigger uvicorn --reload mid-job.
       DOWNLOADS_DIR: /downloads
     ports:
-      - "8000:8000"
+      - "8710:8710"
     volumes:
       - ./backend:/app
       - ./downloads:/downloads
+      # Summarizer model weights, kept across rebuilds.
+      - hf-cache:/root/.cache/huggingface
     depends_on:
       db:
         condition: service_healthy
@@ -42,7 +44,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     environment:
-      VITE_API_PROXY_TARGET: http://backend:8000
+      VITE_API_PROXY_TARGET: http://backend:8710
       VITE_USE_POLLING: "true"
     ports:
       - "5173:5173"
@@ -55,3 +57,4 @@ services:
 
 volumes:
   pgdata:
+  hf-cache:

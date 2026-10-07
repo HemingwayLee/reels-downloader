@@ -1,5 +1,6 @@
-"""Browse downloaded videos: folders, files, cached thumbnails and the videos themselves."""
+"""Browse downloaded videos: folders, files, cached thumbnails, captions and the videos themselves."""
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -7,12 +8,14 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.config import settings
-from app.schemas import LibraryFile, LibraryFolder
+from app.schemas import LibraryFile, LibraryFolder, ReelCaption
 
 router = APIRouter(prefix="/library", tags=["library"])
 
 # Hidden so it isn't listed as a folder; thumbnails mirror the folder layout inside it.
 THUMBNAILS_DIR = ".thumbnails"
+# Per folder: IDs of reels deleted from the library, so downloads don't bring them back.
+DELETED_REELS_FILE = ".deleted-reels.json"
 THUMBNAIL_WIDTH = 360
 
 
@@ -20,6 +23,16 @@ def _is_video(path: Path) -> bool:
     # yt-dlp's in-progress files (<id>.f399.mp4, <id>.temp.mp4) and the re-encode's
     # <id>.h264.mp4 all have an extra dot in the stem.
     return path.is_file() and path.suffix == ".mp4" and "." not in path.stem
+
+
+def load_deleted_reels(folder: Path) -> set[str]:
+    path = folder / DELETED_REELS_FILE
+    return set(json.loads(path.read_text(encoding="utf-8"))) if path.is_file() else set()
+
+
+def _remember_deleted(folder: Path, reel_id: str) -> None:
+    ids = load_deleted_reels(folder) | {reel_id}
+    (folder / DELETED_REELS_FILE).write_text(json.dumps(sorted(ids)), encoding="utf-8")
 
 
 def _folder(name: str) -> Path:
@@ -77,15 +90,41 @@ def list_files(folder: str):
     ]
 
 
+def _thumbnail(folder: str, video: Path) -> Path:
+    return settings.downloads_dir / THUMBNAILS_DIR / folder / f"{video.stem}.jpg"
+
+
 @router.get("/{folder}/{name}/thumbnail")
 def get_thumbnail(folder: str, name: str):
     video = _video(folder, name)
-    thumb = settings.downloads_dir / THUMBNAILS_DIR / folder / f"{video.stem}.jpg"
+    thumb = _thumbnail(folder, video)
     if not thumb.exists() or thumb.stat().st_mtime < video.stat().st_mtime:
         _make_thumbnail(video, thumb)
     return FileResponse(thumb, media_type="image/jpeg")
 
 
+@router.get("/{folder}/{name}/caption", response_model=ReelCaption)
+def get_caption(folder: str, name: str):
+    caption = _video(folder, name).with_suffix(".json")
+    if not caption.is_file():
+        # Videos downloaded before captions were saved have no .json.
+        raise HTTPException(status_code=404, detail="No caption saved for this video")
+    return ReelCaption.model_validate_json(caption.read_text(encoding="utf-8"))
+
+
 @router.get("/{folder}/{name}")
 def get_video(folder: str, name: str):
     return FileResponse(_video(folder, name), media_type="video/mp4")
+
+
+@router.delete("/{folder}/{name}", status_code=204)
+def delete_video(folder: str, name: str):
+    """Deletes the video, its caption .json and its cached thumbnail (not the YouTube copy).
+
+    The reel is remembered so later downloads skip it.
+    """
+    video = _video(folder, name)
+    _remember_deleted(video.parent, video.stem)
+    video.with_suffix(".json").unlink(missing_ok=True)
+    _thumbnail(folder, video).unlink(missing_ok=True)
+    video.unlink()

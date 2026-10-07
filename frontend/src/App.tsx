@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   Alert,
   AppBar,
@@ -19,8 +19,10 @@ import {
   Typography,
 } from '@mui/material'
 import DownloadIcon from '@mui/icons-material/Download'
-import { api, type DownloadJob, type Health } from './api.ts'
+import YouTubeIcon from '@mui/icons-material/YouTube'
+import { api, type DownloadJob, type Health, type YoutubeStatus } from './api.ts'
 import FileBrowser from './FileBrowser.tsx'
+import YoutubeAccountDialog, { type YoutubeNotice } from './YoutubeAccountDialog.tsx'
 
 const POLL_INTERVAL_MS = 1500
 
@@ -32,8 +34,54 @@ const STATUS_LABEL: Record<DownloadJob['status'], string> = {
   failed: 'Failed',
 }
 
+const SKIP_REASON_LABEL: Record<string, string> = {
+  'Already downloaded': 'already downloaded',
+  'Deleted earlier': 'deleted earlier',
+  'Custom cover': 'had a custom cover',
+  'Cover check failed': "couldn't be checked for a custom cover",
+}
+
+/** Why a finished job got fewer than `count` reels: the page ran out after the skips. */
+function shortfallMessage(job: DownloadJob) {
+  const seen = job.files.length + job.failed.length + job.skipped.length
+  const counts = new Map<string, number>()
+  for (const s of job.skipped) counts.set(s.reason, (counts.get(s.reason) ?? 0) + 1)
+  const parts = [...counts].map(
+    ([reason, n]) => `${n} ${SKIP_REASON_LABEL[reason] ?? reason.toLowerCase()}`,
+  )
+  if (job.failed.length > 0) parts.push(`${job.failed.length} failed to download`)
+  const result =
+    job.files.length === 0
+      ? 'so no new reels were downloaded'
+      : `so only ${job.files.length} of ${job.count} were downloaded`
+  return (
+    `Facebook showed ${seen} reel${seen === 1 ? '' : 's'} ` +
+    "(it stops at about 50 for visitors who aren't logged in)" +
+    (parts.length > 0 ? `: ${parts.join(', ')}` : '') +
+    ` — ${result}.`
+  )
+}
+
 function isRunning(job: DownloadJob | null) {
   return job !== null && job.status !== 'done' && job.status !== 'failed'
+}
+
+/**
+ * Reads (and removes from the address bar) what the YouTube sign-in left in the URL: Google's
+ * ?code=&state= / ?error=&state= redirect, or ?youtube_error= if the sign-in couldn't start.
+ */
+function takeYoutubeRedirect() {
+  const params = new URLSearchParams(window.location.search)
+  const state = params.get('state')
+  const google = state ? { state, code: params.get('code'), error: params.get('error') } : null
+  const startError = params.get('youtube_error')
+  if (!google && !startError) return null
+  for (const key of ['state', 'code', 'error', 'scope', 'authuser', 'prompt', 'youtube_error']) {
+    params.delete(key)
+  }
+  const query = params.toString()
+  window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''))
+  return { google, startError }
 }
 
 export default function App() {
@@ -41,17 +89,40 @@ export default function App() {
   const [count, setCount] = useState('5')
   const [pageUrl, setPageUrl] = useState('')
   const [skipCustomCovers, setSkipCustomCovers] = useState(true)
+  const [skipExisting, setSkipExisting] = useState(true)
   const [job, setJob] = useState<DownloadJob | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [youtube, setYoutube] = useState<YoutubeStatus | null>(null)
+  // Read once on load; after a sign-in redirect the dialog reopens to show the result.
+  const [youtubeRedirect] = useState(takeYoutubeRedirect)
+  const [youtubeNotice, setYoutubeNotice] = useState<YoutubeNotice | null>(
+    youtubeRedirect?.startError ? { severity: 'error', message: youtubeRedirect.startError } : null,
+  )
+  const [youtubeOpen, setYoutubeOpen] = useState(youtubeRedirect !== null)
+  // Google's code works once; StrictMode runs effects twice in development.
+  const signInFinished = useRef(false)
 
   useEffect(() => {
     api.health().then(setHealth).catch((e: Error) => setError(e.message))
+    const google = youtubeRedirect?.google
+    if (google && !signInFinished.current) {
+      signInFinished.current = true
+      api
+        .finishYoutubeSignIn(google)
+        .then((s) => {
+          setYoutube(s)
+          setYoutubeNotice({ severity: 'success', message: 'Signed in to YouTube.' })
+        })
+        .catch((e: Error) => setYoutubeNotice({ severity: 'error', message: e.message }))
+    } else if (!google) {
+      api.youtubeStatus().then(setYoutube).catch((e: Error) => setError(e.message))
+    }
     // Pick up the latest job so a page refresh doesn't lose a running download.
     api
       .listDownloads()
       .then((jobs) => setJob((current) => current ?? jobs[0] ?? null))
       .catch((e: Error) => setError(e.message))
-  }, [])
+  }, [youtubeRedirect])
 
   const running = isRunning(job)
   const jobId = job?.id
@@ -72,13 +143,14 @@ export default function App() {
     if (!countValid || !pageUrl.trim()) return
     try {
       setError(null)
-      setJob(await api.createDownload(pageUrl.trim(), n, skipCustomCovers))
+      setJob(await api.createDownload(pageUrl.trim(), n, skipCustomCovers, skipExisting))
     } catch (err) {
       setError((err as Error).message)
     }
   }
 
-  const done = job ? job.files.length + job.failed.length : 0
+  // Skipped and failed reels don't count toward `count`; the job moves on to the next one.
+  const done = job ? job.files.length : 0
 
   return (
     <>
@@ -87,6 +159,14 @@ export default function App() {
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Reels Downloader
           </Typography>
+          <Button
+            color="inherit"
+            startIcon={<YouTubeIcon />}
+            onClick={() => setYoutubeOpen(true)}
+            sx={{ mr: 2, textTransform: 'none' }}
+          >
+            {youtube?.connected ? (youtube.channel ?? 'YouTube') : 'Sign in to YouTube'}
+          </Button>
           {health && (
             <Chip
               size="small"
@@ -142,6 +222,15 @@ export default function App() {
                 }
                 label="Only reels without a custom cover"
               />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={skipExisting}
+                    onChange={(e) => setSkipExisting(e.target.checked)}
+                  />
+                }
+                label="Skip reels I already have (downloaded or deleted)"
+              />
             </Stack>
           </Paper>
 
@@ -165,9 +254,7 @@ export default function App() {
                 )}
                 {job.error && <Alert severity="error">{job.error}</Alert>}
                 {job.status === 'done' && job.files.length < job.count && (
-                  <Alert severity="warning">
-                    Only {job.files.length} of {job.count} reels were downloaded.
-                  </Alert>
+                  <Alert severity="warning">{shortfallMessage(job)}</Alert>
                 )}
                 {job.output_dir && (
                   <Typography variant="body2" color="text.secondary">
@@ -212,9 +299,20 @@ export default function App() {
           <FileBrowser
             folder={job?.output_dir ?? null}
             refreshKey={`${job?.id}:${job?.files.length}:${job?.status}`}
+            onYoutubeSignIn={() => setYoutubeOpen(true)}
           />
         </Stack>
       </Container>
+
+      <YoutubeAccountDialog
+        open={youtubeOpen}
+        onClose={() => {
+          setYoutubeOpen(false)
+          setYoutubeNotice(null)
+        }}
+        notice={youtubeNotice}
+        onChange={setYoutube}
+      />
     </>
   )
 }

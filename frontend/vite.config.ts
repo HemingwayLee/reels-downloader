@@ -12,7 +12,7 @@ export default defineConfig({
     watch: process.env.VITE_USE_POLLING === 'true' ? { usePolling: true, interval: 300 } : undefined,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
+        target: process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8710',
         changeOrigin: true,
       },
     },

@@ -32,8 +32,8 @@ docker compose -f docker-compose.dev.yml up --build
 | Service  | URL                          |
 | -------- | ---------------------------- |
 | Frontend | http://localhost:5173        |
-| API      | http://localhost:8000/api    |
-| API docs | http://localhost:8000/docs   |
+| API      | http://localhost:8710/api    |
+| API docs | http://localhost:8710/docs   |
 | Postgres | `localhost:5432` (app / app / db `app`) |
 
 Both apps hot reload: `frontend/` and `backend/` are bind-mounted into their containers,

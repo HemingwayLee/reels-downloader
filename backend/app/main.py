@@ -13,6 +13,7 @@ from app.db import Base, SessionLocal, engine, get_db
 from app.downloader import normalize_reels_url, run_download_job
 from app.library import router as library_router
 from app.schemas import DownloadJobCreate, DownloadJobRead
+from app.youtube import router as youtube_router
 
 # Show the app's own INFO logs (e.g. skipped reels) next to uvicorn's.
 logging.basicConfig(format="%(levelname)s:     %(name)s - %(message)s")
@@ -25,6 +26,12 @@ DbSession = Annotated[Session, Depends(get_db)]
 async def lifespan(_: FastAPI):
     # Simple bootstrap for dev; switch to Alembic migrations once the schema grows.
     Base.metadata.create_all(bind=engine)
+    # create_all doesn't add columns to existing tables.
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE download_jobs "
+            "ADD COLUMN IF NOT EXISTS skip_existing BOOLEAN NOT NULL DEFAULT TRUE"
+        ))
     # Jobs run in-process, so any still "running" were cut off by a restart.
     with SessionLocal() as db:
         db.execute(
@@ -75,6 +82,7 @@ def create_download(payload: DownloadJobCreate, db: DbSession, tasks: Background
         page_url=str(payload.page_url),
         count=payload.count,
         skip_custom_covers=payload.skip_custom_covers,
+        skip_existing=payload.skip_existing,
     )
     db.add(job)
     db.commit()
@@ -92,4 +100,5 @@ def get_download(job_id: int, db: DbSession):
 
 
 api.include_router(library_router)
+api.include_router(youtube_router)
 app.include_router(api)
