@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reels Downloader</title>
+  <link rel="icon" href="icons/icon32.png">
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <h1>Reels Downloader</h1>
+  <p id="page" class="muted"></p>
+
+  <form id="form">
+    <div class="field">
+      <span>Downloads folder (to skip reels already on disk)</span>
+      <div class="row">
+        <span id="folder" class="path"></span>
+        <button id="pickFolder" type="button" class="secondary">Choose…</button>
+      </div>
+      <span id="folderNote" class="note"></span>
+    </div>
+    <label>Reels to download
+      <input id="count" type="number" min="1" max="500" value="10" required>
+    </label>
+    <label class="check">
+      <input id="skipCustom" type="checkbox" checked>
+      Only reels without a custom cover
+    </label>
+    <label class="check">
+      <input id="saveJson" type="checkbox" checked>
+      Save title &amp; description (.json)
+    </label>
+    <label>Title model (from WebLLM Model Manager)
+      <select id="model"></select>
+      <span id="modelNote" class="note"></span>
+    </label>
+    <button id="run" type="submit">Run</button>
+  </form>
+
+  <p id="summary"></p>
+  <ol id="log"></ol>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
