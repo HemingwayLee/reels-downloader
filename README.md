@@ -64,6 +64,44 @@ available.
 
 Videos are Facebook's progressive HD MP4 (H.264/AAC, usually 720p), which QuickTime plays.
 
+## Upload to YouTube
+
+The side panel's **YouTube** tab uploads downloaded reels to your channel, one at a time,
+using each reel's `.json`: `title` becomes the video title (the first line of the
+description if there's no title, the reel ID if there's neither) and `description` the
+video description. Reels without a `.json` can't be uploaded.
+
+One-time setup, since Google requires each app that uploads to have its own OAuth client:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), enable the
+   YouTube Data API v3 and add your Google account as a test user on the OAuth consent
+   screen.
+2. Create an OAuth client ID of type **Web application** and add the redirect URI shown
+   under **OAuth client setup** in the YouTube tab
+   (`https://<extension id>.chromiumapp.org`, no trailing `/`). An unpacked extension's ID comes from its
+   folder path, so keep loading it from the same `extension/dist/` folder.
+3. Paste the client ID and client secret into the YouTube tab and click **Sign in with
+   Google**, then pick your account in Google's account chooser. The extension keeps a
+   refresh token, so you stay signed in. (While the consent screen is in **Testing**, Google
+   expires it after 7 days; just sign in again.)
+
+The tab works on the folder chosen at the top of the side panel: that folder itself if it
+holds `.mp4` files (e.g. `Downloads/reels/<page>/`, or a folder saved by the old web app),
+otherwise its `reels/<page>/` for the Facebook page open in the current tab. With no folder
+chosen, it shows nothing.
+
+The folder's videos are shown as thumbnails, oldest first, marked **On YouTube** or
+**No .json**. Click one to see the title and description from its `.json` (and the title
+YouTube will get), play the video, and **Upload to YouTube**. Videos go up **private**;
+change the visibility in YouTube Studio when you're ready. After the upload the video ID is
+written back into the reel's `.json`, so it is never uploaded twice:
+
+```json
+"youtube": { "video_id": "5ipl_RAC7Kc", "privacy": "private", "uploaded_at": "2026-10-12T10:00:00.000Z" }
+```
+
+YouTube's default API quota allows about 6 uploads a day.
+
 ## How it works
 
 - `page.js` runs inside the Facebook tab, so it uses your login: it scrolls the reels tab
@@ -72,6 +110,9 @@ Videos are Facebook's progressive HD MP4 (H.264/AAC, usually 720p), which QuickT
 - `cover.js` compares the cover with the first frame (SSIM on 256×256 grayscale): auto
   covers score ~0.98–1.0, designed covers below ~0.2. When the page has no first-frame
   image (logged-in pages often don't), it decodes the video's first frame instead.
+- `youtube.js` signs in with `chrome.identity.launchWebAuthFlow` (authorization-code flow
+  with PKCE and the client secret, for a refresh token) and uploads with the YouTube Data API's resumable upload; `upload.js`
+  is the YouTube tab, reading and writing the files through the chosen Downloads folder.
 - `llm.js` asks WebLLM Model Manager (extension ID `kpfphjjelobankiknfkcigkcfnnhcddk`)
   for its downloaded models and has the chosen one write each title.
 - `sidepanel.js` drives the job and saves files with `chrome.downloads`.

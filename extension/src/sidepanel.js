@@ -1,41 +1,15 @@
 import { isCustomCover } from "./cover.js";
-import { canRead, existsOnDisk, pickFolder, savedFolder } from "./folder.js";
+import { canAccess, existsOnDisk, pickFolder, savedFolder } from "./folder.js";
+import { $, activeTab, addRow, reelsPage } from "./ui.js";
+import { initUploadTab, refreshUploadTab } from "./upload.js";
 import { listModels, loadModel, MANAGER_ID, titleFor } from "./llm.js";
 import { collectReelIds, fetchReelInfo } from "./page.js";
 
-const $ = (id) => document.getElementById(id);
 const form = $("form");
 const runButton = $("run");
 
 /** The running job ({stop}), or null when idle. */
 let job = null;
-
-/**
- * The folder name for a Facebook page's reels tab URL, or null if it isn't one.
- * Accepts facebook.com/<page>/reels/ and facebook.com/profile.php?id=<id>&sk=reels_tab.
- */
-function reelsPage(url) {
-  let u;
-  try {
-    u = new URL(url);
-  } catch {
-    return null;
-  }
-  if (u.hostname !== "facebook.com" && !u.hostname.endsWith(".facebook.com")) return null;
-  let name = null;
-  if (u.pathname === "/profile.php") {
-    if (u.searchParams.get("sk") === "reels_tab") name = u.searchParams.get("id");
-  } else {
-    const parts = u.pathname.split("/").filter(Boolean);
-    if (parts.length === 2 && parts[1] === "reels") name = decodeURIComponent(parts[0]);
-  }
-  return name && name.replace(/[^\p{L}\p{N}._-]/gu, "_");
-}
-
-async function activeTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab;
-}
 
 async function refreshPage() {
   if (job) return;
@@ -128,27 +102,13 @@ async function refreshFolder() {
   $("folder").textContent = handle ? handle.name : "Not chosen";
   let note = "";
   if (!handle) {
-    note = "Pick your Downloads folder so reels already on disk are skipped. "
-      + "Until then, only Chrome's download history is checked.";
-  } else if (!(await canRead(handle))) {
-    note = "Chrome will ask to read this folder again when you press Run.";
+    note = "Pick your Downloads folder so reels already on disk are skipped, or a folder of "
+      + "videos to see and upload in the YouTube tab. Until then, only Chrome's download "
+      + "history is checked.";
+  } else if (!(await canAccess(handle))) {
+    note = "Chrome will ask for access to this folder again when you press Run or Upload.";
   }
   $("folderNote").textContent = note;
-}
-
-function addRow(id) {
-  const li = document.createElement("li");
-  const link = document.createElement("a");
-  link.href = `https://www.facebook.com/reel/${id}`;
-  link.target = "_blank";
-  link.textContent = id;
-  const status = document.createElement("span");
-  li.append(link, " — ", status);
-  $("log").prepend(li);
-  return (cls, text) => {
-    status.className = cls;
-    status.textContent = text;
-  };
 }
 
 async function runJob(tabId, page, count, skipCustom, saveCaptions, model, folder) {
@@ -190,7 +150,7 @@ async function runJob(tabId, page, count, skipCustom, saveCaptions, model, folde
       }
       const id = ids[i];
       const filename = `reels/${page}/${id}.mp4`;
-      const set = addRow(id);
+      const set = addRow($("log"), id);
       summarize("Running…");
       try {
         set("busy", "checking…");
@@ -280,7 +240,7 @@ form.addEventListener("submit", async (event) => {
   }
   // Ask for folder access first: the prompt needs the Run click's user gesture.
   let folder = await savedFolder();
-  if (folder && !(await canRead(folder, true).catch(() => false))) folder = null;
+  if (folder && !(await canAccess(folder, true).catch(() => false))) folder = null;
   refreshFolder();
   const tab = await activeTab();
   const page = reelsPage(tab?.url ?? "");
@@ -299,13 +259,35 @@ $("pickFolder").addEventListener("click", async () => {
     return;
   }
   refreshFolder();
+  refreshUploadTab();
 });
+
+// Tabs: Download and YouTube. The last one used is remembered.
+function showTab(name) {
+  for (const button of document.querySelectorAll(".tab")) {
+    const active = button.dataset.tab === name;
+    button.classList.toggle("active", active);
+    $(`tab-${button.dataset.tab}`).hidden = !active;
+  }
+  chrome.storage.local.set({ tab: name });
+  if (name === "youtube") refreshUploadTab();
+}
+for (const button of document.querySelectorAll(".tab")) {
+  button.addEventListener("click", () => showTab(button.dataset.tab));
+}
+chrome.storage.local.get("tab").then(({ tab }) => showTab(tab === "youtube" ? "youtube" : "download"));
+initUploadTab();
 
 $("saveJson").addEventListener("change", refreshModels);
 $("model").addEventListener("change", () => chrome.storage.local.set({ model: $("model").value }));
 
-chrome.tabs.onActivated.addListener(refreshPage);
-chrome.tabs.onUpdated.addListener((_tabId, change) => change.url && refreshPage());
+// The YouTube tab shows reels/<page>/ for the page open in this tab, so refresh it too.
+const onTabChange = () => {
+  refreshPage();
+  if (!$("tab-youtube").hidden) refreshUploadTab();
+};
+chrome.tabs.onActivated.addListener(onTabChange);
+chrome.tabs.onUpdated.addListener((_tabId, change) => change.url && onTabChange());
 refreshPage();
 refreshModels();
 refreshFolder();

@@ -7,38 +7,117 @@
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
-  <h1>Reels Downloader</h1>
-  <p id="page" class="muted"></p>
+  <header class="top">
+    <h1>Reels Downloader</h1>
 
-  <form id="form">
-    <div class="field">
-      <span>Downloads folder (to skip reels already on disk)</span>
+    <div class="field folder">
+      <span>Folder (Downloads, or a folder of videos)</span>
       <div class="row">
         <span id="folder" class="path"></span>
         <button id="pickFolder" type="button" class="secondary">Choose…</button>
       </div>
       <span id="folderNote" class="note"></span>
     </div>
-    <label>Reels to download
-      <input id="count" type="number" min="1" max="500" value="10" required>
-    </label>
-    <label class="check">
-      <input id="skipCustom" type="checkbox" checked>
-      Only reels without a custom cover
-    </label>
-    <label class="check">
-      <input id="saveJson" type="checkbox" checked>
-      Save title &amp; description (.json)
-    </label>
-    <label>Title model (from WebLLM Model Manager)
-      <select id="model"></select>
-      <span id="modelNote" class="note"></span>
-    </label>
-    <button id="run" type="submit">Run</button>
-  </form>
 
-  <p id="summary"></p>
-  <ol id="log"></ol>
+    <nav class="tabs">
+      <button type="button" class="tab" data-tab="download">Download</button>
+      <button type="button" class="tab" data-tab="youtube">YouTube</button>
+    </nav>
+  </header>
+
+  <section id="tab-download" hidden>
+    <p id="page" class="muted"></p>
+
+    <form id="form">
+      <label>Reels to download
+        <input id="count" type="number" min="1" max="500" value="10" required>
+      </label>
+      <label class="check">
+        <input id="skipCustom" type="checkbox" checked>
+        Only reels without a custom cover
+      </label>
+      <label class="check">
+        <input id="saveJson" type="checkbox" checked>
+        Save title &amp; description (.json)
+      </label>
+      <label>Title model (from WebLLM Model Manager)
+        <select id="model"></select>
+        <span id="modelNote" class="note"></span>
+      </label>
+      <button id="run" type="submit">Run</button>
+    </form>
+
+    <p id="summary"></p>
+    <ol id="log"></ol>
+  </section>
+
+  <section id="tab-youtube" hidden>
+    <div id="ytAccount" class="field account">
+      <span>YouTube account</span>
+      <div class="row">
+        <span id="ytChannel" class="path"></span>
+        <button id="ytSignOut" type="button" class="secondary" hidden>Sign out</button>
+      </div>
+    </div>
+
+    <details id="ytSetup">
+      <summary>OAuth client setup</summary>
+      <p class="note">
+        Google requires each app that uploads to YouTube to have its own OAuth client.
+        Create one once in
+        <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>:
+      </p>
+      <ol class="note steps">
+        <li>Enable the YouTube Data API v3 for your project.</li>
+        <li>On the OAuth consent screen, add your Google account as a test user.</li>
+        <li>Create an OAuth client ID of type <b>Web application</b> with this authorized
+          redirect URI:</li>
+      </ol>
+      <div class="row">
+        <input id="ytRedirect" type="text" readonly>
+        <button id="ytCopy" type="button" class="secondary">Copy</button>
+      </div>
+      <label>Client ID
+        <input id="ytClientId" type="text" placeholder="1234567890-abc.apps.googleusercontent.com"
+          autocomplete="off" spellcheck="false">
+      </label>
+      <label>Client secret
+        <input id="ytClientSecret" type="password" autocomplete="off" spellcheck="false">
+      </label>
+      <button id="ytSignIn" type="button">Sign in with Google</button>
+      <span id="ytNote" class="note fail"></span>
+    </details>
+
+    <div class="field gallery-head">
+      <span id="ytFolder"></span>
+      <div class="row">
+        <span id="ytCounts" class="note"></span>
+        <button id="ytAllow" type="button" class="secondary" hidden>Allow access</button>
+      </div>
+    </div>
+    <div id="ytGallery" class="gallery"></div>
+  </section>
+
+  <dialog id="ytDialog">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <span id="ytDialogStatus"></span>
+        <button id="ytDialogClose" type="button" class="secondary">Close</button>
+      </div>
+      <video id="ytDialogVideo" controls playsinline></video>
+      <h2 id="ytDialogTitle"></h2>
+      <p id="ytDialogTitleNote" class="note"></p>
+      <p id="ytDialogDescription"></p>
+      <div class="row upload-row">
+        <button id="ytDialogUpload" type="button">Upload to YouTube</button>
+        <span id="ytDialogUploadNote" class="note"></span>
+      </div>
+      <p class="note links">
+        <a id="ytDialogReel" target="_blank">Facebook reel</a>
+        <a id="ytDialogYoutube" target="_blank">Watch on YouTube</a>
+      </p>
+    </div>
+  </dialog>
 
   <script type="module" src="sidepanel.js"></script>
 </body>

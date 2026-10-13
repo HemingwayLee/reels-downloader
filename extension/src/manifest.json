@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Reels Downloader",
   "version": "1.0.0",
-  "description": "Download the newest reels of a Facebook page, skipping reels with a custom cover.",
+  "description": "Download the newest reels of a Facebook page, skipping reels with a custom cover, and upload them to YouTube.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -13,11 +13,14 @@
     "sidePanel",
     "scripting",
     "downloads",
-    "storage"
+    "storage",
+    "identity"
   ],
   "host_permissions": [
     "https://www.facebook.com/*",
-    "https://*.fbcdn.net/*"
+    "https://*.fbcdn.net/*",
+    "https://www.googleapis.com/*",
+    "https://oauth2.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"
