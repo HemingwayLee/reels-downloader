@@ -1,5 +1,5 @@
 import { isCustomCover } from "./cover.js";
-import { canAccess, existsOnDisk, pickFolder, savedFolder } from "./folder.js";
+import { canAccess, existsOnDisk, listFiles, pickFolder, savedFolder } from "./folder.js";
 import { $, activeTab, addRow, isFacebook, reelId, reelsPage } from "./ui.js";
 import { initUploadTab, refreshUploadTab } from "./upload.js";
 import { listModels, loadModel, MANAGER_ID, titleFor } from "./llm.js";
@@ -86,10 +86,10 @@ function newTitler(model) {
 }
 
 /**
- * Save reel `id`'s caption, with a title summarized from it, as reels/<page>/<id>.json
- * next to the video. Returns the status text for the reel's row.
+ * Save reel `id`'s caption, with a title summarized from it, as <dir>/<id>.json next to
+ * the video. Returns the status text for the reel's row.
  */
-async function saveCaption(id, page, info, titler, set) {
+async function saveCaption(id, dir, info, titler, set) {
   const description = (info.caption ?? "").trim();
   let title = null;
   let titleNote = "";
@@ -112,7 +112,7 @@ async function saveCaption(id, page, info, titler, set) {
   }
   await saveJson(
     { url: `https://www.facebook.com/reel/${id}`, title, description },
-    `reels/${page}/${id}.json`,
+    `${dir}/${id}.json`,
   );
   return `downloaded — ${title ? `“${title}”` : titleNote}`;
 }
@@ -222,7 +222,7 @@ async function runJob(tabId, page, count, skipCustom, saveCaptions, model, folde
           set("ok", "downloaded");
           continue;
         }
-        set("ok", await saveCaption(id, page, info, titler, set));
+        set("ok", await saveCaption(id, `reels/${page}`, info, titler, set));
       } catch (e) {
         console.error(`Reel ${id}`, e);
         set("fail", `failed: ${e.message}`);
@@ -267,23 +267,35 @@ form.addEventListener("submit", async (event) => {
 });
 
 /**
+ * The page folder chosen at the top (like Downloads/reels/<page>/), as its name, or null if
+ * the chosen folder isn't one. As in the YouTube tab, a folder of .mp4 files counts as one.
+ */
+async function chosenPage(folder) {
+  if (!folder || folder.name === "reels") return null;
+  return [...(await listFiles(folder))].some((n) => n.endsWith(".mp4")) ? folder.name : null;
+}
+
+/**
  * Download one reel by its URL, whatever its cover. Saves to reels/<page>/ when this tab
- * is a page's reels tab, else to reels/other/.
+ * is a page's reels tab or a page's folder (reels/<page>/) is chosen at the top, else to
+ * reels/ itself.
  */
 async function downloadUrl(tabId, id, page, saveCaptions, model, folder) {
   job = { stop: false };
   urlButton.disabled = true;
   runButton.disabled = true;
-  const filename = `reels/${page}/${id}.mp4`;
   const set = addRow($("urlLog"), id);
   try {
+    page ??= await chosenPage(folder);
+    const dir = page ? `reels/${page}` : "reels";
+    const filename = `${dir}/${id}.mp4`;
     set("busy", "checking…");
-    if (await alreadyDownloaded(filename, folder)) return set("skip", `already in reels/${page}/`);
+    if (await alreadyDownloaded(filename, folder)) return set("skip", `already in ${dir}/`);
     const info = await inTab(tabId, fetchReelInfo, [id]);
     if (info.error) throw new Error(info.error);
     set("busy", "downloading…");
     await download(info.video, filename);
-    set("ok", saveCaptions ? await saveCaption(id, page, info, newTitler(model), set) : "downloaded");
+    set("ok", saveCaptions ? await saveCaption(id, dir, info, newTitler(model), set) : "downloaded");
     $("reelUrl").value = "";
   } catch (e) {
     console.error(`Reel ${id}`, e);
@@ -313,8 +325,7 @@ $("urlForm").addEventListener("submit", async (event) => {
     const set = addRow($("urlLog"), id);
     return set("fail", "open any Facebook page in this tab first");
   }
-  const page = reelsPage(tab.url) ?? "other";
-  downloadUrl(tab.id, id, page, $("saveJson").checked, $("model").value || null, folder);
+  downloadUrl(tab.id, id, reelsPage(tab.url), $("saveJson").checked, $("model").value || null, folder);
 });
 $("reelUrl").addEventListener("input", () => $("reelUrl").setCustomValidity(""));
 

@@ -66,7 +66,8 @@ To grab one specific reel, paste its URL (`facebook.com/reel/<id>`, a `/videos/<
 `/watch/?v=<id>` link, or just the ID) under **By URL** and press **Download**. The cover
 check doesn't apply there: the reel is downloaded whatever its cover. Any Facebook page
 must be open in the tab. The reel goes to `Downloads/reels/<page>/` if that tab is a page's
-Reels tab, else to `Downloads/reels/other/`, with its `.json` if **Save title &
+Reels tab or the folder chosen at the top is a page's folder (`Downloads/reels/<page>/`,
+one holding `.mp4` files), else straight into `Downloads/reels/`, with its `.json` if **Save title &
 description** is on.
 
 Videos are Facebook's progressive HD MP4 (H.264/AAC, usually 720p), which QuickTime plays.
