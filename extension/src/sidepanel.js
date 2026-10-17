@@ -1,14 +1,15 @@
 import { isCustomCover } from "./cover.js";
 import { canAccess, existsOnDisk, pickFolder, savedFolder } from "./folder.js";
-import { $, activeTab, addRow, reelsPage } from "./ui.js";
+import { $, activeTab, addRow, isFacebook, reelId, reelsPage } from "./ui.js";
 import { initUploadTab, refreshUploadTab } from "./upload.js";
 import { listModels, loadModel, MANAGER_ID, titleFor } from "./llm.js";
 import { collectReelIds, fetchReelInfo } from "./page.js";
 
 const form = $("form");
 const runButton = $("run");
+const urlButton = $("urlRun");
 
-/** The running job ({stop}), or null when idle. */
+/** The running job ({stop}), or null when idle. Only one runs at a time. */
 let job = null;
 
 async function refreshPage() {
@@ -76,6 +77,46 @@ async function saveJson(data, filename) {
   }
 }
 
+/**
+ * The title model for a job: {model, error}. `error` is set when the model can't be
+ * loaded, so later reels don't try again.
+ */
+function newTitler(model) {
+  return { model, error: model ? null : "no model selected" };
+}
+
+/**
+ * Save reel `id`'s caption, with a title summarized from it, as reels/<page>/<id>.json
+ * next to the video. Returns the status text for the reel's row.
+ */
+async function saveCaption(id, page, info, titler, set) {
+  const description = (info.caption ?? "").trim();
+  let title = null;
+  let titleNote = "";
+  if (!description) {
+    titleNote = "no caption";
+  } else if (titler.error) {
+    titleNote = `no title: ${titler.error}`;
+  } else {
+    try {
+      set("busy", "loading the title model…");
+      await loadModel(titler.model, (text) => set("busy", text));
+      set("busy", "writing the title…");
+      title = await titleFor(description);
+    } catch (e) {
+      console.error(`Title for reel ${id}`, e);
+      titleNote = `no title: ${e.message}`;
+      // A model that won't load won't load for the next reel either.
+      if (/load|reach|connect|downloaded/i.test(e.message)) titler.error = e.message;
+    }
+  }
+  await saveJson(
+    { url: `https://www.facebook.com/reel/${id}`, title, description },
+    `reels/${page}/${id}.json`,
+  );
+  return `downloaded — ${title ? `“${title}”` : titleNote}`;
+}
+
 /** Fill the model picker with the models downloaded in WebLLM Model Manager. */
 async function refreshModels() {
   const select = $("model");
@@ -116,12 +157,12 @@ async function runJob(tabId, page, count, skipCustom, saveCaptions, model, folde
   job = current;
   runButton.textContent = "Stop";
   runButton.classList.add("stop");
+  urlButton.disabled = true;
   $("log").replaceChildren();
 
   let downloaded = 0, skipped = 0, failed = 0;
   let note = "";
-  // Set when the model can't be loaded, so later reels don't try again.
-  let modelError = model ? null : "no model selected";
+  const titler = newTitler(model);
   const summarize = (status) => {
     const parts = [`Downloaded ${downloaded} of ${count}`];
     if (skipped) parts.push(`${skipped} skipped`);
@@ -181,33 +222,7 @@ async function runJob(tabId, page, count, skipCustom, saveCaptions, model, folde
           set("ok", "downloaded");
           continue;
         }
-
-        // Save the caption, with a title summarized from it, as <id>.json next to the video.
-        const description = (info.caption ?? "").trim();
-        let title = null;
-        let titleNote = "";
-        if (!description) {
-          titleNote = "no caption";
-        } else if (modelError) {
-          titleNote = `no title: ${modelError}`;
-        } else {
-          try {
-            set("busy", "loading the title model…");
-            await loadModel(model, (text) => set("busy", text));
-            set("busy", "writing the title…");
-            title = await titleFor(description);
-          } catch (e) {
-            console.error(`Title for reel ${id}`, e);
-            titleNote = `no title: ${e.message}`;
-            // A model that won't load won't load for the next reel either.
-            if (/load|reach|connect|downloaded/i.test(e.message)) modelError = e.message;
-          }
-        }
-        await saveJson(
-          { url: `https://www.facebook.com/reel/${id}`, title, description },
-          `reels/${page}/${id}.json`,
-        );
-        set("ok", `downloaded — ${title ? `“${title}”` : titleNote}`);
+        set("ok", await saveCaption(id, page, info, titler, set));
       } catch (e) {
         console.error(`Reel ${id}`, e);
         set("fail", `failed: ${e.message}`);
@@ -224,6 +239,7 @@ async function runJob(tabId, page, count, skipCustom, saveCaptions, model, folde
     runButton.textContent = "Run";
     runButton.classList.remove("stop");
     runButton.disabled = false;
+    urlButton.disabled = false;
     refreshPage();
     refreshModels();
     refreshFolder();
@@ -249,6 +265,58 @@ form.addEventListener("submit", async (event) => {
   runJob(tab.id, page, Number($("count").value), $("skipCustom").checked, $("saveJson").checked,
     model, folder);
 });
+
+/**
+ * Download one reel by its URL, whatever its cover. Saves to reels/<page>/ when this tab
+ * is a page's reels tab, else to reels/other/.
+ */
+async function downloadUrl(tabId, id, page, saveCaptions, model, folder) {
+  job = { stop: false };
+  urlButton.disabled = true;
+  runButton.disabled = true;
+  const filename = `reels/${page}/${id}.mp4`;
+  const set = addRow($("urlLog"), id);
+  try {
+    set("busy", "checking…");
+    if (await alreadyDownloaded(filename, folder)) return set("skip", `already in reels/${page}/`);
+    const info = await inTab(tabId, fetchReelInfo, [id]);
+    if (info.error) throw new Error(info.error);
+    set("busy", "downloading…");
+    await download(info.video, filename);
+    set("ok", saveCaptions ? await saveCaption(id, page, info, newTitler(model), set) : "downloaded");
+    $("reelUrl").value = "";
+  } catch (e) {
+    console.error(`Reel ${id}`, e);
+    set("fail", `failed: ${e.message}`);
+  } finally {
+    job = null;
+    urlButton.disabled = false;
+    refreshPage();
+    refreshModels();
+    refreshFolder();
+  }
+}
+
+$("urlForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (job) return;
+  const input = $("reelUrl");
+  const id = reelId(input.value);
+  input.setCustomValidity(id ? "" : "Enter a Facebook reel URL, like facebook.com/reel/<id>.");
+  if (!input.reportValidity()) return;
+  // Ask for folder access first: the prompt needs the click's user gesture.
+  let folder = await savedFolder();
+  if (folder && !(await canAccess(folder, true).catch(() => false))) folder = null;
+  refreshFolder();
+  const tab = await activeTab();
+  if (!isFacebook(tab?.url ?? "")) {
+    const set = addRow($("urlLog"), id);
+    return set("fail", "open any Facebook page in this tab first");
+  }
+  const page = reelsPage(tab.url) ?? "other";
+  downloadUrl(tab.id, id, page, $("saveJson").checked, $("model").value || null, folder);
+});
+$("reelUrl").addEventListener("input", () => $("reelUrl").setCustomValidity(""));
 
 $("pickFolder").addEventListener("click", async () => {
   try {

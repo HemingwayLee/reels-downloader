@@ -26,6 +26,7 @@
   </header>
 
   <section id="tab-download" hidden>
+    <h2 class="section-title">From the reels tab</h2>
     <p id="page" class="muted"></p>
 
     <form id="form">
@@ -48,7 +49,22 @@
     </form>
 
     <p id="summary"></p>
-    <ol id="log"></ol>
+    <ol id="log" class="log"></ol>
+
+    <h2 class="section-title">By URL</h2>
+    <form id="urlForm">
+      <div class="field">
+        <span>Reel URL</span>
+        <div class="row">
+          <input id="reelUrl" type="text" placeholder="https://www.facebook.com/reel/…"
+            autocomplete="off" spellcheck="false" required>
+          <button id="urlRun" type="submit">Download</button>
+        </div>
+        <span class="note">Downloads the reel whatever its cover, using the title &amp;
+          description options above. Needs a Facebook page open in this tab.</span>
+      </div>
+    </form>
+    <ol id="urlLog" class="log"></ol>
   </section>
 
   <section id="tab-youtube" hidden>

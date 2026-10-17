@@ -62,6 +62,13 @@ Traditional Chinese always gets a Taiwan-style Traditional Chinese title, even i
 answers in Simplified. `title` is `null` when the reel has no caption or no model is
 available.
 
+To grab one specific reel, paste its URL (`facebook.com/reel/<id>`, a `/videos/<id>` or
+`/watch/?v=<id>` link, or just the ID) under **By URL** and press **Download**. The cover
+check doesn't apply there: the reel is downloaded whatever its cover. Any Facebook page
+must be open in the tab. The reel goes to `Downloads/reels/<page>/` if that tab is a page's
+Reels tab, else to `Downloads/reels/other/`, with its `.json` if **Save title &
+description** is on.
+
 Videos are Facebook's progressive HD MP4 (H.264/AAC, usually 720p), which QuickTime plays.
 
 ## Upload to YouTube

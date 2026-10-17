@@ -13,7 +13,7 @@ export function reelsPage(url) {
   } catch {
     return null;
   }
-  if (u.hostname !== "facebook.com" && !u.hostname.endsWith(".facebook.com")) return null;
+  if (!isFacebook(u.href)) return null;
   let name = null;
   if (u.pathname === "/profile.php") {
     if (u.searchParams.get("sk") === "reels_tab") name = u.searchParams.get("id");
@@ -22,6 +22,35 @@ export function reelsPage(url) {
     if (parts.length === 2 && parts[1] === "reels") name = decodeURIComponent(parts[0]);
   }
   return name && name.replace(/[^\p{L}\p{N}._-]/gu, "_");
+}
+
+/** True if `url` is a Facebook page, where page.js's functions can run. */
+export function isFacebook(url) {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "facebook.com" || hostname.endsWith(".facebook.com");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The reel ID in a Facebook reel or video URL, or null if there isn't one. Accepts
+ * facebook.com/reel/<id>, facebook.com/<page>/videos/<id>, facebook.com/watch/?v=<id>
+ * and a bare ID.
+ */
+export function reelId(text) {
+  text = text.trim();
+  if (/^\d+$/.test(text)) return text;
+  let u;
+  try {
+    u = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);
+  } catch {
+    return null;
+  }
+  if (!isFacebook(u.href)) return null;
+  const id = u.pathname.match(/\/(?:reel|videos)\/(\d+)/)?.[1] ?? u.searchParams.get("v");
+  return id && /^\d+$/.test(id) ? id : null;
 }
 
 export async function activeTab() {

@@ -45,6 +45,13 @@ body {
 section { padding: 16px; }
 
 h1 { font-size: 18px; margin: 0 0 4px; }
+.section-title { font-size: 15px; margin: 0 0 8px; }
+.log + .section-title {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+#urlForm .row button { flex: none; }
 .muted { color: var(--muted); margin: 0 0 16px; }
 
 form { display: grid; gap: 12px; margin-bottom: 16px; }
@@ -133,9 +140,9 @@ summary { cursor: pointer; color: var(--muted); }
 #tab-youtube > .field { margin-bottom: 12px; }
 
 #summary { font-weight: 600; }
-#log { padding-left: 20px; margin: 0; }
-#log li { margin-bottom: 4px; word-break: break-word; }
-#log a { color: inherit; }
+.log { padding-left: 20px; margin: 0; }
+.log li { margin-bottom: 4px; word-break: break-word; }
+.log a { color: inherit; }
 .ok { color: var(--ok); }
 .skip { color: var(--skip); }
 .fail { color: var(--fail); }
