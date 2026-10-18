@@ -85,10 +85,10 @@ One-time setup, since Google requires each app that uploads to have its own OAut
    YouTube Data API v3 and add your Google account as a test user on the OAuth consent
    screen.
 2. Create an OAuth client ID of type **Web application** and add the redirect URI shown
-   under **OAuth client setup** in the YouTube tab
+   under **OAuth client setup** in the **Upload Youtube** tab
    (`https://<extension id>.chromiumapp.org`, no trailing `/`). An unpacked extension's ID comes from its
    folder path, so keep loading it from the same `extension/dist/` folder.
-3. Paste the client ID and client secret into the YouTube tab and click **Sign in with
+3. Paste the client ID and client secret into the **Upload Youtube** tab and click **Sign in with
    Google**, then pick your account in Google's account chooser. The extension keeps a
    refresh token, so you stay signed in. (While the consent screen is in **Testing**, Google
    expires it after 7 days; just sign in again.)
@@ -120,7 +120,7 @@ YouTube's default API quota allows about 6 uploads a day.
   image (logged-in pages often don't), it decodes the video's first frame instead.
 - `youtube.js` signs in with `chrome.identity.launchWebAuthFlow` (authorization-code flow
   with PKCE and the client secret, for a refresh token) and uploads with the YouTube Data API's resumable upload; `upload.js`
-  is the YouTube tab, reading and writing the files through the chosen Downloads folder.
+  is the Upload Youtube tab, reading and writing the files through the chosen Downloads folder.
 - `llm.js` asks WebLLM Model Manager (extension ID `kpfphjjelobankiknfkcigkcfnnhcddk`)
   for its downloaded models and has the chosen one write each title.
 - `sidepanel.js` drives the job and saves files with `chrome.downloads`.

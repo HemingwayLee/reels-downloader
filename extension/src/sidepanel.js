@@ -144,7 +144,7 @@ async function refreshFolder() {
   let note = "";
   if (!handle) {
     note = "Pick your Downloads folder so reels already on disk are skipped, or a folder of "
-      + "videos to see and upload in the YouTube tab. Until then, only Chrome's download "
+      + "videos to see and upload in the Upload Youtube tab. Until then, only Chrome's download "
       + "history is checked.";
   } else if (!(await canAccess(handle))) {
     note = "Chrome will ask for access to this folder again when you press Run or Upload.";
@@ -341,7 +341,7 @@ $("pickFolder").addEventListener("click", async () => {
   refreshUploadTab();
 });
 
-// Tabs: Download and YouTube. The last one used is remembered.
+// Tabs: Download Reels and Upload Youtube. The last one used is remembered.
 function showTab(name) {
   for (const button of document.querySelectorAll(".tab")) {
     const active = button.dataset.tab === name;
