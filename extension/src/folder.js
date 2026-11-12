@@ -120,3 +120,22 @@ export async function writeJson(dir, name, data) {
   await writable.write(`${JSON.stringify(data, null, 2)}\n`);
   await writable.close();
 }
+
+/** The downloaded videos and their .json files directly in `dir`, as file names. */
+export async function downloadedFiles(dir) {
+  return [...(await listFiles(dir))].filter((n) => /\.(mp4|json)$/i.test(n)).sort();
+}
+
+/** Delete the files `names` from `dir`. Returns the number deleted; missing files are skipped. */
+export async function deleteFiles(dir, names) {
+  let deleted = 0;
+  for (const name of names) {
+    try {
+      await dir.removeEntry(name);
+      deleted++;
+    } catch (e) {
+      if (!isNotFound(e)) throw e;
+    }
+  }
+  return deleted;
+}

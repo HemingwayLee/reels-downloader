@@ -96,6 +96,8 @@ button.secondary {
 .row { display: flex; align-items: center; gap: 8px; }
 .path { flex: 1; color: var(--muted); overflow-wrap: anywhere; }
 button.stop { background: var(--fail); }
+button.secondary.danger { color: var(--fail); border-color: var(--fail); }
+button.secondary.danger.confirm { background: var(--fail); color: #fff; font-weight: 600; }
 
 input[readonly] { color: var(--muted); }
 .row input,

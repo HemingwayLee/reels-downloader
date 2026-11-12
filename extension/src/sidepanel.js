@@ -1,5 +1,7 @@
 import { isCustomCover } from "./cover.js";
-import { canAccess, existsOnDisk, listFiles, pickFolder, savedFolder } from "./folder.js";
+import {
+  canAccess, deleteFiles, downloadedFiles, existsOnDisk, listFiles, pickFolder, savedFolder,
+} from "./folder.js";
 import { $, activeTab, addRow, isFacebook, reelId, reelsPage } from "./ui.js";
 import { initUploadTab, refreshUploadTab } from "./upload.js";
 import { listModels, loadModel, MANAGER_ID, titleFor } from "./llm.js";
@@ -339,6 +341,62 @@ $("pickFolder").addEventListener("click", async () => {
   }
   refreshFolder();
   refreshUploadTab();
+});
+
+// Delete every .mp4 and .json directly in the chosen folder. The first click counts the
+// files and asks for confirmation on the button itself; a second click within a few
+// seconds deletes them.
+const clearButton = $("clearFolder");
+let pendingClear = null; // {folder, names, timer} while waiting for the confirming click
+
+function resetClearButton() {
+  if (pendingClear) clearTimeout(pendingClear.timer);
+  pendingClear = null;
+  clearButton.textContent = "Delete files…";
+  clearButton.classList.remove("confirm");
+  clearButton.disabled = false;
+}
+
+clearButton.addEventListener("click", async () => {
+  if (pendingClear) {
+    const { folder, names } = pendingClear;
+    resetClearButton();
+    clearButton.disabled = true;
+    clearButton.textContent = "Deleting…";
+    try {
+      const deleted = await deleteFiles(folder, names);
+      $("folderNote").textContent = `Deleted ${deleted} file${deleted === 1 ? "" : "s"} from ${folder.name}.`;
+    } catch (e) {
+      console.error(e);
+      $("folderNote").textContent = `Couldn't delete the files: ${e.message}`;
+    }
+    resetClearButton();
+    refreshUploadTab();
+    return;
+  }
+  if (job) {
+    $("folderNote").textContent = "Wait for the download to finish (or stop it) first.";
+    return;
+  }
+  const folder = await savedFolder();
+  if (!folder) {
+    $("folderNote").textContent = "Choose a folder first.";
+    return;
+  }
+  // Asking for access needs this click's user gesture.
+  if (!(await canAccess(folder, true).catch(() => false))) {
+    $("folderNote").textContent = `Chrome wasn't given access to ${folder.name}.`;
+    return;
+  }
+  const names = await downloadedFiles(folder);
+  if (!names.length) {
+    $("folderNote").textContent = `No .mp4 or .json files in ${folder.name}.`;
+    return;
+  }
+  const videos = names.filter((n) => /\.mp4$/i.test(n)).length;
+  pendingClear = { folder, names, timer: setTimeout(resetClearButton, 5000) };
+  clearButton.textContent = `Delete ${videos} video${videos === 1 ? "" : "s"} + ${names.length - videos} .json?`;
+  clearButton.classList.add("confirm");
 });
 
 // Tabs: Download Reels and Upload Youtube. The last one used is remembered.
